@@ -1,0 +1,28 @@
+# Segredos — nunca devem entrar na imagem
+.env
+.env.*
+!.env.example
+credentials/
+*.dump
+*.backup
+*.sql.gz
+
+# Ambiente local
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Dados locais (a imagem le do banco, nao do disco)
+data/
+db/
+
+# Desenvolvimento
+.git/
+.github/
+tests/
+n8n/
+scripts/
+docs/
+*.md
+!README.md

@@ -1,0 +1,2 @@
+# Scripts de shell rodam na VPS (Linux): CRLF quebra o interpretador.
+*.sh text eol=lf

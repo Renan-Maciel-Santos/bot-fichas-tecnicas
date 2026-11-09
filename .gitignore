@@ -1,0 +1,63 @@
+# Variáveis de ambiente e segredos
+.env
+.env.local
+.env.production
+credentials/
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Dados sensíveis e amostras
+data/samples/*
+!data/samples/.gitkeep
+data/output/
+*.pdf
+*.xlsx
+!Produtos.xlsx.example
+# Dados ficticios da demo: versionados de proposito
+!demo/catalogo.xlsx
+!demo/pdfs/**/*.pdf
+
+# Logs
+*.log
+logs/
+
+# Docker volumes (caso alguém faça bind mount)
+volumes/
+
+# n8n local data (caso alguém faça bind mount)
+n8n_data/
+
+# Dumps ad-hoc do terminal / dry-runs
+documentos.txt
+*.dump.txt
+# Backups de banco (dados do cliente - nunca versionar)
+*.dump
+*.sql.gz
+*.backup
+# Pasta de backups e cargas (dados do cliente, chaves) - nunca versionar
+backups/
+
+# Ajustes locais do compose (portas, nomes) -- cada maquina tem os seus
+docker-compose.override.yml

@@ -1,0 +1,79 @@
+# Golden set do motor de resposta — versão 1
+#
+# Regras:
+# - Este arquivo é FROZEN. Casos novos entram por adição; para alterar
+#   expectativa de um caso existente, incremente para motor_v2.yaml.
+# - "deve_conter" e "nao_deve_conter" são substrings case-insensitive.
+# - "exige_citacao: true" verifica se a resposta preencheu produtos_referenciados
+#   ou documentos_enviados (verificação estrutural, não regex no texto).
+# - Campos opcionais podem ser omitidos.
+#
+# Cobertura por caminho do motor (responder.py):
+#   busca_caracteristica  -> 001
+#   propriedades_produto  -> 002
+#   fetch_documento       -> 003
+#   pergunta_aberta       -> 004
+#   fora_escopo           -> 005
+#   esclarecimento        -> 006
+#
+# TODO (semear com o motor rodando, para observar intent real):
+#   - Caso "não encontrei" via busca vetorial abaixo do threshold 0.50
+#     (validação empírica do FATOR_DESTAQUE / threshold de similaridade).
+
+versao: 1
+
+casos:
+  - id: "001"
+    pergunta: "qual produto tem hipoclorito de sódio?"
+    intent_esperado: busca_caracteristica
+    deve_conter:
+      - "hipoclorito"
+      - "limpax"
+    exige_citacao: true
+
+  - id: "002"
+    pergunta: "qual o pH da água sanitária limpax?"
+    intent_esperado: propriedades_produto
+    produto_esperado_codigo: 9000001
+    deve_conter:
+      - "ph"
+      - "10"
+      - "13"
+    exige_citacao: true
+
+  - id: "003"
+    pergunta: "me manda a FDS da água sanitária limpax"
+    intent_esperado: fetch_documento
+    produto_esperado_codigo: 9000001
+    deve_conter:
+      - "fds"
+    exige_citacao: true
+
+  - id: "004"
+    pergunta: "o que fazer em caso de contato dos olhos com água sanitária?"
+    intent_esperado: pergunta_aberta
+    deve_conter:
+      - "olhos"
+    nao_deve_conter:
+      - "não encontrei essa informação"
+    exige_citacao: true
+
+  - id: "005"
+    pergunta: "qual a capital da frança?"
+    intent_esperado: fora_escopo
+    deve_conter:
+      - "fora"
+
+  - id: "006"
+    pergunta: "qual o pH do produto 99999999?"
+    intent_esperado: propriedades_produto
+    deve_conter:
+      - "Não encontrei esse produto"
+  
+  - id: "007"
+    pergunta: "quais as propriedades do sabão xpto imaginário?"
+    intent_esperado: pergunta_aberta
+    deve_conter:
+      - "Não encontrei essa informação"
+    nao_deve_conter:
+      - "xpto"

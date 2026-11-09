@@ -1,0 +1,9 @@
+# Dependências de desenvolvimento e teste.
+# Instalar com: pip install -r requirements.txt -r requirements-dev.txt
+# A imagem de producao instala APENAS requirements.txt.
+
+-r requirements.txt
+
+pytest>=8.0.0
+pyyaml>=6.0          # eval do motor (scripts/eval_motor.py)
+httpx>=0.27.0        # TestClient do FastAPI

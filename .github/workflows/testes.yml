@@ -1,0 +1,91 @@
+# Roda a suite inteira em todo PR e em todo push na main.
+#
+# O banco nasce vazio, do mesmo jeito que o deploy/instalar.sh sem dump:
+# extensoes, roles (001a), migracoes e grants (001b-e). Nenhum teste
+# depende de dado real -- as fixtures montam o cenario e fazem rollback --
+# e a OpenAI e sempre simulada; a chave abaixo e falsa de proposito, para
+# que um teste que chame a API de verdade falhe aqui em vez de gastar.
+name: Testes
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: botuser
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: bot_fichas
+        ports:
+          - "5433:5432"
+        options: >-
+          --health-cmd "pg_isready -U botuser -d bot_fichas"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5433"
+      POSTGRES_DB: bot_fichas
+      POSTGRES_USER: botuser
+      POSTGRES_PASSWORD: ci
+      BOT_APP_USER: bot_app
+      BOT_APP_PASSWORD: ci
+      API_KEY: ci-chave
+      OPENAI_API_KEY: sk-ci-falsa
+      PGPASSWORD: ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Mesma versao da imagem da API (Dockerfile).
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Preparar o banco (extensoes, roles, migracoes, grants)
+        run: |
+          psql_ci() { psql -h localhost -p 5433 -U botuser -q -v ON_ERROR_STOP=1 "$@"; }
+
+          psql_ci -d bot_fichas -f db/init/01_extensions.sql
+
+          {
+            printf '\\set n8n_user n8n_user\n\\set n8n_password ci\n\\set n8n_db n8n_bot\n'
+            printf '\\set evolution_user evolution_user\n\\set evolution_password ci\n\\set evolution_db evolution_bot\n'
+            printf '\\set bot_app_user bot_app\n\\set bot_app_password ci\n'
+            cat db/provisioning/001a_databases.sql
+          } | psql_ci -d postgres
+
+          for arquivo in db/migrations/*.sql; do
+            echo "$arquivo"
+            psql_ci -d bot_fichas -f "$arquivo"
+          done
+
+          for arquivo in db/provisioning/001[b-e]_*.sql; do
+            echo "$arquivo"
+            { printf '\\set bot_app_user bot_app\n'; cat "$arquivo"; } | psql_ci -d bot_fichas
+          done
+
+      - name: Testes
+        run: pytest -q

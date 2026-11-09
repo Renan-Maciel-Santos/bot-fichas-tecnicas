@@ -1,0 +1,175 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: bot_fichas_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      # Só no loopback: publicar em 0.0.0.0 expõe o serviço a toda a rede
+      # (e numa VPS o Docker passa por cima do firewall). Os containers se
+      # falam pela rede interna do compose; o host chega por 127.0.0.1.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+      - ./db/migrations:/migrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    # No compose, e não `uvicorn` na mão: o n8n precisa de um host estável
+    # para chamar, dentro do mesmo ciclo de vida dos outros serviços.
+    build: .
+    container_name: bot_fichas_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Sobrescreve o .env, que é escrito para uso a partir do HOST.
+      # Dentro da rede do compose o Postgres atende pelo nome do serviço
+      # na porta interna 5432 — o mapeamento 5433 só existe no host.
+      # Sem isto o container tenta `localhost:5433` e não acha ninguém.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    ports:
+      # 8001 no host para conviver com outro serviço na 8000 da mesma
+      # máquina. Nada dentro do compose usa a porta publicada: o n8n chama
+      # http://api:8000/perguntar pelo nome do serviço, na porta interna.
+      # Mesma razão do 8081 da Evolution e do 5433 do Postgres.
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  evolution:
+    # Evolution PRÓPRIA do bot, com database e volume só dela. Compartilhar
+    # uma Evolution entre projetos significa mensagens de um no banco do
+    # outro, uma chave global capaz de apagar as instâncias dos dois e,
+    # como a Evolution v2 aceita UM webhook por instância, desligar o
+    # outro bot a um erro de digitação de distância.
+    #
+    # Pinada em release estável, pelo mesmo motivo do n8n: pull silencioso
+    # troca versão e roda migration.
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: bot_fichas_evolution
+    restart: unless-stopped
+    environment:
+      # 8081 no host para não disputar a 8080 com outro serviço. Dentro
+      # da rede do compose ela continua atendendo em 8080.
+      - SERVER_URL=http://localhost:${EVOLUTION_PORT}
+
+      # Chave ADMIN: cria, lista e apaga instâncias. Não é a que o n8n
+      # usa para enviar mensagem — essa é o token da instância, com
+      # escopo menor. Ver n8n/README.md.
+      - AUTHENTICATION_API_KEY=${EVOLUTION_GLOBAL_KEY}
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+
+      # Database dedicado, provisionado por db/provisioning/001a.
+      # `postgres` é o serviço deste compose, na porta interna 5432.
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://${EVOLUTION_DB_USER}:${EVOLUTION_DB_PASSWORD}@postgres:5432/${EVOLUTION_DB_NAME}
+      - DATABASE_URL=postgresql://${EVOLUTION_DB_USER}:${EVOLUTION_DB_PASSWORD}@postgres:5432/${EVOLUTION_DB_NAME}
+      - DATABASE_CONNECTION_CLIENT_NAME=bot_fichas_evolution
+
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      # Histórico e labels não são usados pelo bot e só engordam a base.
+      - DATABASE_SAVE_DATA_HISTORIC=false
+      - DATABASE_SAVE_DATA_LABELS=false
+
+      - CACHE_REDIS_ENABLED=false
+      - CACHE_LOCAL_ENABLED=true
+
+      # Webhook é configurado POR INSTÂNCIA (o fluxo do n8n depende
+      # disso). Global ligado mandaria todo evento de toda instância
+      # para uma URL só.
+      - WEBHOOK_GLOBAL_ENABLED=false
+
+      - CONFIG_SESSION_PHONE_CLIENT=BotFichas
+      - CONFIG_SESSION_PHONE_NAME=Chrome
+      - QRCODE_LIMIT=30
+      - LANGUAGE=pt-BR
+      - LOG_LEVEL=ERROR
+      - TZ=America/Sao_Paulo
+    ports:
+      # Só no loopback: publicar em 0.0.0.0 expõe o serviço a toda a rede
+      # (e numa VPS o Docker passa por cima do firewall). Os containers se
+      # falam pela rede interna do compose; o host chega por 127.0.0.1.
+      - "127.0.0.1:${EVOLUTION_PORT}:8080"
+    volumes:
+      # Sessão do WhatsApp (credenciais do pareamento). Perder este
+      # volume obriga a ler o QR Code de novo.
+      - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  n8n:
+    # Pinada na versão que já roda hoje (conferido com
+    # `docker exec bot_fichas_n8n n8n --version` = 2.16.0). `:latest` num
+    # deploy de cliente é surpresa esperando acontecer: um pull silencioso
+    # troca a versão e as migrations do n8n rodam sozinhas.
+    image: n8nio/n8n:2.16.0
+    container_name: bot_fichas_n8n
+    restart: unless-stopped
+    environment:
+      # ---------------- Banco dedicado ----------------
+      # Até 09/2026 o n8n gravava dentro do `bot_fichas`, o database da
+      # aplicação, conectando como `botuser` — o owner dele. Isso
+      # despejava 48 tabelas do n8n no meio das 34 da aplicação.
+      # `n8n_bot` e `n8n_user` já existem (db/provisioning/001a).
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${N8N_DB_NAME}
+      - DB_POSTGRESDB_USER=${N8N_DB_USER}
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD}
+
+      # ---------------- Chave de cifra ----------------
+      # Sem esta variável o n8n autogera uma chave e a esconde no volume,
+      # em /home/node/.n8n/config. O container deixa de ser reproduzível,
+      # e perder o volume perde toda credencial, sem recuperação. Era esse
+      # o estado até 09/2026.
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+
+      # ---------------- Rede ----------------
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+
+      - GENERIC_TIMEZONE=America/Sao_Paulo
+      - TZ=America/Sao_Paulo
+
+      # NÃO reintroduzir N8N_BASIC_AUTH_ACTIVE / _USER / _PASSWORD:
+      # inoperantes desde o n8n v1. Estavam aqui e não protegiam nada — a
+      # autenticação é conta de owner gravada no database.
+    ports:
+      # Só no loopback: publicar em 0.0.0.0 expõe o serviço a toda a rede
+      # (e numa VPS o Docker passa por cima do firewall). Os containers se
+      # falam pela rede interna do compose; o host chega por 127.0.0.1.
+      - "127.0.0.1:5678:5678"
+    volumes:
+      # A chave de cifra vem da N8N_ENCRYPTION_KEY, não do volume. Um volume
+      # antigo, com chave autogerada em /home/node/.n8n/config, faz o n8n
+      # abortar em loop com "Mismatching encryption keys" -- comece limpo.
+      - n8n_bot_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  evolution_instances:
+  n8n_bot_data:

@@ -1,0 +1,244 @@
+{
+  "name": "Bot Fichas — WhatsApp",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bot-fichas",
+        "options": {}
+      },
+      "id": "a9000002-0000-4000-8000-000000000001",
+      "name": "Webhook Evolution",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-460, 300],
+      "webhookId": "a9000002-0000-4000-8000-000000000001",
+      "notes": "Responde 200 na hora (responseMode padrao). A Evolution so precisa do ack; quem cuida de reenvio e o dedupe por message_id na API."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c0000000-0000-4000-8000-000000000001",
+              "name": "evolution_url",
+              "value": "http://evolution:8080",
+              "type": "string"
+            },
+            {
+              "id": "c0000000-0000-4000-8000-000000000002",
+              "name": "api_url",
+              "value": "http://api:8000/perguntar",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "a9000002-0000-4000-8000-000000000002",
+      "name": "Configuracao",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-240, 300],
+      "notes": "Unico lugar para editar endereco. Sao nomes de SERVICO do compose, resolvidos na rede interna — 'localhost' aqui seria o proprio container do n8n."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Traduz o webhook da Evolution para o contrato da API do bot e\n// descarta o que nao e pergunta de vendedor.\n//\n// Cada descarte devolve um motivo legivel: sem isso, depurar \"o bot\n// nao respondeu\" vira adivinhacao na aba de execucoes.\n\nconst raiz = $input.first().json;\nconst body = raiz.body ?? raiz;\nconst data = body.data ?? {};\nconst chave = data.key ?? {};\nconst jid = chave.remoteJid ?? '';\n\nfunction ignorar(motivo) {\n  return [{ json: { processar: false, motivo } }];\n}\n\n// 1. Eco. A Evolution tambem notifica as mensagens que o PROPRIO bot\n//    enviou. Sem este corte ele responde a si mesmo, em loop.\nif (chave.fromMe === true) {\n  return ignorar('mensagem enviada pelo proprio bot');\n}\n\n// 2. Grupos. O remoteJid de grupo nao e um telefone, e a whitelist da\n//    API e por telefone — passaria direto para um 422.\nif (jid.endsWith('@g.us')) {\n  return ignorar('mensagem de grupo');\n}\n\n// 3. Status / broadcast.\nif (jid.startsWith('status@') || jid.endsWith('@broadcast')) {\n  return ignorar('status ou broadcast');\n}\n\n// 4. Texto. Mensagem simples vem em `conversation`; mensagem que cita\n//    outra vem em `extendedTextMessage.text`. Audio, imagem e figurinha\n//    nao tem texto e nao ha o que perguntar.\nconst mensagem = data.message ?? {};\nconst texto = (\n  mensagem.conversation ??\n  mensagem.extendedTextMessage?.text ??\n  ''\n).trim();\n\nif (!texto) {\n  return ignorar(`sem texto (tipo: ${data.messageType ?? 'desconhecido'})`);\n}\n\n// 5. Telefone. O jid chega como 5511999998888@s.whatsapp.net, as vezes\n//    com sufixo de dispositivo (5511999998888:12@...). A API exige\n//    E.164 sem '+', so digitos, 10 a 20 caracteres.\nconst remetente = jid.split('@')[0].split(':')[0].replace(/\\D/g, '');\nif (remetente.length < 10 || remetente.length > 20) {\n  return ignorar(`remetente fora do formato (${remetente.length} digitos)`);\n}\n\n// 6. Id da mensagem. E a chave do dedupe: sem ele um reenvio da\n//    Evolution viraria resposta duplicada para o vendedor.\nconst messageId = chave.id ?? '';\nif (!messageId) {\n  return ignorar('mensagem sem id (dedupe impossivel)');\n}\n\nreturn [{\n  json: {\n    processar: true,\n    // Contrato da API: 1..1000 caracteres. Truncar e melhor que 422 —\n    // o vendedor recebe resposta ao inves de silencio.\n    pergunta: texto.slice(0, 1000),\n    remetente,\n    message_id: String(messageId).slice(0, 100),\n    // Responder pela MESMA instancia que recebeu, em vez de fixar o\n    // nome aqui: se um dia houver mais de uma, isto continua correto.\n    instancia: body.instance ?? '',\n    push_name: data.pushName ?? '',\n  },\n}];\n"
+      },
+      "id": "a9000002-0000-4000-8000-000000000003",
+      "name": "Extrai a mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-20, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b0000000-0000-4000-8000-000000000001",
+              "leftValue": "={{ $json.processar }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "a9000002-0000-4000-8000-000000000004",
+      "name": "E pergunta de vendedor?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuracao').first().json.api_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ pergunta: $json.pergunta, remetente: $json.remetente, message_id: $json.message_id }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "a9000002-0000-4000-8000-000000000005",
+      "name": "Pergunta ao motor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PREENCHER_NA_IMPORTACAO",
+          "name": "Bot Fichas API (X-API-Key)"
+        }
+      },
+      "notes": "neverError: um 403 (fora da whitelist) e resposta valida do fluxo, nao falha de execucao. timeout 120s: pergunta aberta faz embeddings + LLM."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b0000000-0000-4000-8000-000000000002",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "b0000000-0000-4000-8000-000000000003",
+              "leftValue": "={{ $json.body.duplicada }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "b0000000-0000-4000-8000-000000000004",
+              "leftValue": "={{ $json.body.resposta }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "a9000002-0000-4000-8000-000000000006",
+      "name": "Tem resposta para enviar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [680, 200],
+      "notes": "duplicada=true significa que a primeira copia do webhook JA foi respondida. Enviar de novo e justamente o que o dedupe existe para evitar."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuracao').first().json.evolution_url }}/message/sendText/{{ $('Extrai a mensagem').first().json.instancia }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Extrai a mensagem').first().json.remetente, text: $json.body.resposta }) }}",
+        "options": {}
+      },
+      "id": "a9000002-0000-4000-8000-000000000007",
+      "name": "Envia resposta no WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PREENCHER_NA_IMPORTACAO",
+          "name": "Evolution API (apikey)"
+        }
+      },
+      "notes": "Os links dos documentos ja vao no proprio texto da resposta. Anexo de arquivo exigiria resolver o UUID de `documentos` para uma URL — ver backlog."
+    },
+    {
+      "parameters": {},
+      "id": "a9000002-0000-4000-8000-000000000008",
+      "name": "Ignorada",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [440, 420],
+      "notes": "Eco do proprio bot, grupo, status, midia sem texto ou remetente malformado. O motivo esta em $json.motivo."
+    },
+    {
+      "parameters": {},
+      "id": "a9000002-0000-4000-8000-000000000009",
+      "name": "Sem resposta a enviar",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [920, 320],
+      "notes": "Webhook reenviado (duplicada) ou remetente fora da whitelist (403). O 403 cai aqui de proposito: responder confirmaria a estranho que o numero e um bot. Para o piloto, se preferir avisar, ligue um sendText nesta saida."
+    }
+  ],
+  "connections": {
+    "Webhook Evolution": {
+      "main": [[{ "node": "Configuracao", "type": "main", "index": 0 }]]
+    },
+    "Configuracao": {
+      "main": [[{ "node": "Extrai a mensagem", "type": "main", "index": 0 }]]
+    },
+    "Extrai a mensagem": {
+      "main": [[{ "node": "E pergunta de vendedor?", "type": "main", "index": 0 }]]
+    },
+    "E pergunta de vendedor?": {
+      "main": [
+        [{ "node": "Pergunta ao motor", "type": "main", "index": 0 }],
+        [{ "node": "Ignorada", "type": "main", "index": 0 }]
+      ]
+    },
+    "Pergunta ao motor": {
+      "main": [[{ "node": "Tem resposta para enviar?", "type": "main", "index": 0 }]]
+    },
+    "Tem resposta para enviar?": {
+      "main": [
+        [{ "node": "Envia resposta no WhatsApp", "type": "main", "index": 0 }],
+        [{ "node": "Sem resposta a enviar", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

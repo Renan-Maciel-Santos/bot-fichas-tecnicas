@@ -1,0 +1,39 @@
+# ===== Dependências ativas =====
+
+# Banco de dados
+psycopg2-binary==2.9.9
+
+# Configuração
+python-dotenv==1.0.1
+
+# Leitura de planilha (Fase 1)
+openpyxl==3.1.2
+
+# Manipulação de dados (utilitário geral)
+pandas==2.2.0
+
+# Extração de PDFs
+pymupdf>=1.27.0
+
+# LLM e embeddings (OpenAI)
+openai>=1.50.0
+
+# Chunking de texto (Fase 2)
+langchain-text-splitters>=1.1.2
+tiktoken>=0.13.0
+
+# Google Drive (Fase 4 — ingestão)
+google-api-python-client>=2.118.0
+google-auth>=2.27.0
+google-auth-oauthlib>=1.2.0
+
+# API HTTP (Fase 4 — Bloco B)
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+
+
+# ===== Futuro =====
+#
+# Quando precisarmos de OCR:
+#   pytesseract==0.3.10  (precisa do binário tesseract no sistema)
