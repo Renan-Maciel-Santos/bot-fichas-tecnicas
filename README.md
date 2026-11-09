@@ -229,3 +229,7 @@ PR. Na demo, o `eval_motor` passa nos 7 casos do gabarito.
 Python 3.12 · FastAPI · PostgreSQL 16 + pgvector · pg_trgm · OpenAI
 (embeddings, classificação, extração, redação) · n8n · Evolution API ·
 Docker Compose · GitHub Actions · pytest
+
+## Licença
+
+[MIT](LICENSE). Os dados da pasta `demo/` são fictícios.
