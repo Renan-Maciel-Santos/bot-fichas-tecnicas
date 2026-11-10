@@ -9,7 +9,8 @@ Execucao local:
 """
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
 
 from src import config
 from src.api.routes import router
@@ -35,13 +36,20 @@ app.include_router(router)
 
 
 @app.get("/health", summary="Verifica se o servico esta operacional")
-async def health() -> dict:
+def health():
     """
     Healthcheck para o Docker e para o Traefik.
 
     Verifica a dependencia critica (banco), nao apenas se o processo
     esta vivo: um servidor que responde mas nao alcanca o Postgres
     esta indisponivel na pratica.
+
+    Banco fora responde 503, nao 200: o HEALTHCHECK do Dockerfile usa
+    `curl -f`, que so enxerga o status HTTP. Com 200 o container ficava
+    "healthy" sem alcancar o Postgres.
+
+    `def`, nao `async def`: psycopg2 e bloqueante. Numa corrotina ele
+    travaria o event loop; como funcao comum o FastAPI a roda em thread.
     """
     try:
         with get_connection() as conn:
@@ -50,6 +58,9 @@ async def health() -> dict:
                 cur.fetchone()
     except Exception:
         log.exception("Healthcheck falhou: banco inacessivel")
-        return {"status": "degradado", "banco": False}
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "degradado", "banco": False},
+        )
 
     return {"status": "ok", "banco": True}

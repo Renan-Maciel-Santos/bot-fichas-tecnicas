@@ -37,7 +37,21 @@ set -a; source <(tr -d '\r' < .env); set +a
 VENDEDOR_DEMO="5500000000001"
 
 passo() { printf '\n==> %s\n' "$*"; }
-rodar() { docker compose run --rm -T -v ./demo:/app/demo:ro api python -m "$@"; }
+# O servico `api` do compose recebe so o que o runtime da API usa (perfil
+# bot_app, sem DDL). Ingestao, chunks, vinculacao e extracao sao
+# manutencao: escrevem no acervo com o perfil admin, entao as credenciais
+# dele e os parametros do pipeline entram aqui, so para estes comandos.
+# OPENAI_TIMEOUT_SEGUNDOS vazio = sem o prazo curto da API: a Camada 2 e
+# a extracao fazem chamadas longas.
+rodar() {
+    docker compose run --rm -T -v ./demo:/app/demo:ro \
+        -e POSTGRES_USER -e POSTGRES_PASSWORD \
+        -e CONFIANCA_MINIMA_TIPO -e INGEST_HEURISTICAS \
+        -e LLM_MODEL_EXTRACTION -e LLM_MODEL_LINK \
+        -e CHUNK_SIZE -e CHUNK_OVERLAP -e MIN_CHUNK_SIZE \
+        -e OPENAI_TIMEOUT_SEGUNDOS= \
+        api python -m "$@"
+}
 
 passo "1/7 Catalogo ficticio"
 rodar src.ingestion.import_excel demo/catalogo.xlsx

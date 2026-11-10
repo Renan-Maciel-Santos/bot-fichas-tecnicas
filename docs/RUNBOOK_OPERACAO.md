@@ -172,7 +172,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:5678/webhook/b
 curl -s http://localhost:8001/health
 ```
 
-- `{"status":"degradado","banco":false}` → a API está viva mas não
+- `{"status":"degradado","banco":false}` (HTTP 503) → a API está viva mas não
   alcança o Postgres. Confira se o banco está saudável
   (`docker compose ps`) e se `BOT_APP_PASSWORD` no `.env` bate com a
   senha da role.

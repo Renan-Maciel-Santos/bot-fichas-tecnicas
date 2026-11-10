@@ -1,0 +1,42 @@
+# Atualizacoes de dependencia propostas em PR, uma vez por semana.
+#
+# As tags de imagem e as actions sao fixadas de proposito: nada muda
+# sozinho. O preco e que tambem nada se atualiza sozinho — o n8n ficou 7
+# meses parado com avisos de seguranca publicados. O Dependabot fecha
+# essa conta: abre o PR, o CI roda a suite, e a decisao de subir
+# continua sendo de uma pessoa.
+#
+# n8n e Evolution: atualizar roda migracoes no banco deles. Faca backup
+# (deploy/backup.sh) antes de subir a versao nova.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      # A imagem fica na linha 3.12, a mesma do CI (setup-python) e do
+      # .venv de dev. Sem isto o Dependabot propoe 3.15 so no Dockerfile,
+      # e o CI — que nao constroi a imagem — passa sem testar nada.
+      # Trocar de linha e decisao manual, nos tres lugares juntos.
+      # Patches (3.12.x) seguem chegando.
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

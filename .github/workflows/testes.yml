@@ -26,7 +26,8 @@ jobs:
 
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        # Mesma imagem do docker-compose.yml.
+        image: pgvector/pgvector:0.8.7-pg16
         env:
           POSTGRES_USER: botuser
           POSTGRES_PASSWORD: ci
@@ -52,9 +53,9 @@ jobs:
       PGPASSWORD: ci
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           # Mesma versao da imagem da API (Dockerfile).
           python-version: "3.12"

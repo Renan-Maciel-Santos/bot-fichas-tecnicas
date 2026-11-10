@@ -248,9 +248,32 @@ class TestContrato:
 
 class TestHealth:
     def test_banco_ok(self, client, monkeypatch):
+        from contextlib import contextmanager
+
+        from src.api import main as main_mod
+
+        @contextmanager
+        def conexao_falsa():
+            yield MagicMock()
+
+        monkeypatch.setattr(main_mod, "get_connection", conexao_falsa)
+
         r = client.get("/health")
         assert r.status_code == 200
-        assert r.json()["status"] in {"ok", "degradado"}
+        assert r.json() == {"status": "ok", "banco": True}
+
+    def test_rotas_nao_sao_corrotinas(self):
+        """
+        O motor e o psycopg2 sao bloqueantes: como `async def` uma
+        pergunta lenta travaria o event loop, inclusive o /health.
+        """
+        import inspect
+
+        from src.api import main as main_mod
+        from src.api import routes as rotas
+
+        assert not inspect.iscoroutinefunction(rotas.perguntar)
+        assert not inspect.iscoroutinefunction(main_mod.health)
 
     def test_banco_inacessivel_reporta_degradado(self, client, monkeypatch):
         """
@@ -267,7 +290,9 @@ class TestHealth:
 
         r = client.get("/health")
 
-        assert r.status_code == 200
+        # 503, nao 200: o HEALTHCHECK do Docker usa `curl -f` e so
+        # enxerga o status HTTP.
+        assert r.status_code == 503
         assert r.json() == {"status": "degradado", "banco": False}
 
 
