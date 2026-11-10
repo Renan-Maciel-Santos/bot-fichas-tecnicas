@@ -5,5 +5,5 @@
 -r requirements.txt
 
 pytest>=8.0.0
-pyyaml>=6.0          # eval do motor (scripts/eval_motor.py)
+pyyaml>=6.0.3          # eval do motor (scripts/eval_motor.py)
 httpx>=0.27.0        # TestClient do FastAPI
