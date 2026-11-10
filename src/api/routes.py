@@ -28,8 +28,13 @@ router = APIRouter()
     dependencies=[Depends(verificar_api_key)],
     summary="Responde uma pergunta de vendedor sobre os produtos",
 )
-async def perguntar(payload: PerguntaRequest) -> RespostaResponse:
+def perguntar(payload: PerguntaRequest) -> RespostaResponse:
     """
+    `def`, nao `async def`: o repositorio (psycopg2) e o motor (OpenAI
+    sincrono) sao bloqueantes. Numa corrotina, uma pergunta esperando o
+    LLM travaria o event loop inteiro — o /health e as mensagens dos
+    outros vendedores. Como funcao comum o FastAPI a roda em thread.
+
     Fluxo, na ordem em que as barreiras ficam mais caras:
 
     1. Autorizacao do remetente  — consulta local, barata

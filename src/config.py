@@ -49,6 +49,13 @@ DATABASE_URL_ADMIN = _build_database_url(POSTGRES_USER, POSTGRES_PASSWORD)
 # houve chamada a ela — mantê-la sugeria uma dependencia inexistente.
 OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY", "")
 
+# Prazo, em segundos, de cada chamada a OpenAI. Vazio = padrao do SDK
+# (10 min), adequado aos scripts de lote. O container da API define 30
+# (docker-compose.yml): o n8n desiste da pergunta em 120s, e sem prazo
+# uma chamada pendurada segurava a thread da requisicao por 10 minutos.
+_openai_timeout = os.getenv("OPENAI_TIMEOUT_SEGUNDOS", "").strip()
+OPENAI_TIMEOUT_SEGUNDOS = float(_openai_timeout) if _openai_timeout else None
+
 # --- Google Drive ---
 GOOGLE_DRIVE_FOLDER_ID       = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
 GOOGLE_SERVICE_ACCOUNT_JSON  = os.getenv(

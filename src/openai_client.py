@@ -6,6 +6,8 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from src import config
+
 load_dotenv()
 
 # Modelos definidos uma vez só — usados em todo o projeto
@@ -25,5 +27,11 @@ def get_client() -> OpenAI:
             raise RuntimeError(
                 "OPENAI_API_KEY não encontrada. Verifique o arquivo .env."
             )
-        _client = OpenAI(api_key=api_key)
+        # timeout=None mantem o padrao do SDK (10 min), que serve aos
+        # scripts de lote (extracao, vinculo por LLM). A API define um
+        # prazo curto pelo ambiente: ver OPENAI_TIMEOUT_SEGUNDOS.
+        opcoes = {}
+        if config.OPENAI_TIMEOUT_SEGUNDOS is not None:
+            opcoes["timeout"] = config.OPENAI_TIMEOUT_SEGUNDOS
+        _client = OpenAI(api_key=api_key, **opcoes)
     return _client

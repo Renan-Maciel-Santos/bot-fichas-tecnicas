@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # Versão do pgvector fixada: a tag `pg16` sozinha acompanha a última
+    # e um pull silencioso trocaria a extensão. O Dependabot propõe as
+    # atualizações (.github/dependabot.yml).
+    image: pgvector/pgvector:0.8.7-pg16
     container_name: bot_fichas_postgres
     restart: unless-stopped
     environment:
@@ -28,15 +31,36 @@ services:
     build: .
     container_name: bot_fichas_api
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      # Sobrescreve o .env, que é escrito para uso a partir do HOST.
-      # Dentro da rede do compose o Postgres atende pelo nome do serviço
-      # na porta interna 5432 — o mapeamento 5433 só existe no host.
-      # Sem isto o container tenta `localhost:5433` e não acha ninguém.
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      # Lista explícita no lugar de `env_file: .env`: com o arquivo
+      # inteiro o container recebia a senha de superuser do Postgres, a
+      # N8N_ENCRYPTION_KEY, a chave admin da Evolution e as senhas dos
+      # outros databases — nada disso é usado pela API. Aqui entra só o
+      # que o runtime lê (src/config.py); uma API comprometida não leva
+      # junto o resto do ambiente.
+      #
+      # Variável sem valor = repassada do .env se existir lá; ausente,
+      # vale o padrão do src/config.py. Variável NOVA lida pela API
+      # precisa ser acrescentada aqui, ou não chega ao container.
+      - BOT_APP_USER
+      - BOT_APP_PASSWORD
+      - API_KEY
+      - OPENAI_API_KEY
+      - POSTGRES_DB
+      - LOG_LEVEL
+      - CONTEXTO_TTL_MINUTOS
+      - EMBEDDING_MODEL
+      - EMBEDDING_DIMENSION
+      - LLM_MODEL_RESPONSE
+      # Prazo de cada chamada à OpenAI. O n8n desiste da pergunta em
+      # 120s; sem isto vale o padrão do SDK, 10 minutos por chamada.
+      - OPENAI_TIMEOUT_SEGUNDOS=${OPENAI_TIMEOUT_SEGUNDOS:-30}
+      # O .env é escrito para uso a partir do HOST. Dentro da rede do
+      # compose o Postgres atende pelo nome do serviço na porta interna
+      # 5432 — o mapeamento 5433 só existe no host. Sem isto o container
+      # tenta `localhost:5433` e não acha ninguém.
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
     ports:
       # 8001 no host para conviver com outro serviço na 8000 da mesma
       # máquina. Nada dentro do compose usa a porta publicada: o n8n chama
@@ -115,11 +139,18 @@ services:
         condition: service_healthy
 
   n8n:
-    # Pinada na versão que já roda hoje (conferido com
-    # `docker exec bot_fichas_n8n n8n --version` = 2.16.0). `:latest` num
-    # deploy de cliente é surpresa esperando acontecer: um pull silencioso
-    # troca a versão e as migrations do n8n rodam sozinhas.
-    image: n8nio/n8n:2.16.0
+    # Versão pinada. `:latest` num deploy de cliente é surpresa esperando
+    # acontecer: um pull silencioso troca a versão e as migrations do n8n
+    # rodam sozinhas.
+    #
+    # 2.47.3 desde 11/2026 (era 2.16.0, parada havia 7 meses com dezenas
+    # de avisos de segurança corrigidos entre a 2.39 e a 2.46). É a tag
+    # `stable` do n8n; a 2.48.x ainda era `next` (beta).
+    #
+    # Para subir de versão: rode deploy/backup.sh ANTES — a versão nova
+    # migra o database n8n_bot na subida, e não há caminho de volta para
+    # a imagem antiga sem restaurar o backup.
+    image: n8nio/n8n:2.47.3
     container_name: bot_fichas_n8n
     restart: unless-stopped
     environment:

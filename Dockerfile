@@ -11,7 +11,9 @@
 # ============================================================
 
 # --- Estagio 1: dependencias ---
-FROM python:3.12-slim AS builder
+# Patch fixado (nao `3.12-slim`): o build nao muda de Python sozinho. O
+# Dependabot propoe as atualizacoes (.github/dependabot.yml).
+FROM python:3.12.16-slim AS builder
 
 # Toolchain necessario apenas para compilar; nao vai para a imagem final.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,7 +30,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 
 # --- Estagio 2: runtime ---
-FROM python:3.12-slim
+FROM python:3.12.16-slim
 
 # libpq5 e a dependencia de runtime do psycopg2 (sem os headers de dev).
 RUN apt-get update && apt-get install -y --no-install-recommends \
